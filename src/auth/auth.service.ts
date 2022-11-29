@@ -7,7 +7,8 @@ import { JwtService } from '@nestjs/jwt/dist';
 import { HttpService } from '@nestjs/axios';
 import jwtDecode, { JwtPayload } from 'jwt-decode';
 import { firstValueFrom } from 'rxjs';
-
+import { VaultService } from './vault.service';
+import { KeycloakService } from './keycloak.service';
 type CustomJWtPayload = JwtPayload & {
   sub: string;
   email: string;
@@ -25,6 +26,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private httpService: HttpService,
+    private vaultService: VaultService,
+    private keycloakService: KeycloakService,
   ) {}
 
   ///SIGN UP
@@ -76,34 +79,27 @@ export class AuthService {
 
   //SIGN IN KEYCLOAK
   async signInKeycloak(dto: KeyLoginDto): Promise<Tokens> {
-    // let data1 = {
-    //   grant_type: 'password',
-    //   client_id: 'nest-app',
-    //   client_secret: 'pF1A5HjWMGEihgjiJYPli0XD0sdwBXSD',
-    //   username: 'user3',
-    //   password: 'admin',
+    const vaultSecrets = await this.vaultService.getSecrets();
+
+    //postman
+    // let data = {
+    //   username: dto.username,
+    //   password: dto.password,
+    //   grant_type: dto.grant_type,
+    //   client_id: dto.client_id,
+    //   client_secret: dto.client_secret,
     // };
+    //vault secret
     let data = {
       username: dto.username,
       password: dto.password,
-      grant_type: dto.grant_type,
-      client_id: dto.client_id,
-      client_secret: dto.client_secret,
+      grant_type: vaultSecrets?.grant_type,
+      client_id: vaultSecrets?.client_id,
+      client_secret: vaultSecrets?.client_secret,
     };
-    let headers = {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
+    const keycloakJWT = await this.keycloakService.keycloakLogin(data);
 
-    const j = this.httpService.post(
-      'http://host.docker.internal:18080/auth/realms/nest/protocol/openid-connect/token',
-      data,
-      { headers },
-    );
-    let a = await firstValueFrom(j);
-
-    console.log('first Value from ');
-
-    const decodedToken = jwtDecode<CustomJWtPayload>(a?.data?.access_token);
+    const decodedToken = jwtDecode<CustomJWtPayload>(keycloakJWT?.access_token);
 
     const tokens = await this.signTokens(
       decodedToken?.sub,
